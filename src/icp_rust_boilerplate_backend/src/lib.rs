@@ -131,93 +131,83 @@ fn add_task(payload: TaskPayload) -> Option<Task> {
 
 #[ic_cdk::update]
 fn update_task(id: u64, payload: TaskPayload) -> Result<Task, Error> {
-    let mut storage;
-    let updated_task;
+  let updated_task = STORAGE.with(|service| {
+      let mut service_ref_mut = service.borrow_mut();
+      if let Some(task) = service_ref_mut.get(&id) {
+          if task.owner != caller() {
+              return Err(Error::NotAuthorized {
+                  msg: format!("Caller is not authorized to update task with id={}", id),
+                  caller: caller(),
+              });
+          }
+          // Clone the task and update its fields
+          let mut updated_task = task.clone();
+          updated_task.title = payload.title.clone();
+          updated_task.description = payload.description.clone();
+          updated_task.deadline = payload.deadline;
+          updated_task.updated_at = Some(time());
+          // Replace the task in the map
+          service_ref_mut.insert(id, updated_task.clone());
+          Ok(updated_task)
+      } else {
+          Err(Error::NotFound {
+              msg: format!("Task with id={} not found", id),
+          })
+      }
+  });
 
-    STORAGE.with(|service| {
-        let mut service_ref_mut = service.borrow_mut();
-        storage = &mut *service_ref_mut;
-
-        updated_task = if let Some(task) = storage.get_mut(&id) {
-            // Check if the caller is authorized to update the task
-            if task.owner != caller() {
-                return Err(Error::NotAuthorized {
-                    msg: format!("Caller is not authorized to update task with id={}", id),
-                    caller: caller(),
-                });
-            }
-
-            // Update the task fields with the provided payload
-            task.title = payload.title.clone();
-            task.description = payload.description.clone();
-            task.deadline = payload.deadline;
-            task.updated_at = Some(time());
-
-            // Return a reference to the updated task
-            Some(task)
-        } else {
-            None
-        };
-    });
-
-    match updated_task {
-        Some(task_ref) => {
-            // Clone the updated task and return it
-            Ok(task_ref.clone())
-        }
-        None => Err(Error::NotFound {
-            msg: format!("Task with id={} not found", id),
-        }),
-    }
+  updated_task
 }
 
 
 #[ic_cdk::update]
 fn complete_task(id: u64) -> Result<Task, Error> {
-    let mut storage = STORAGE.with(|service| service.borrow_mut());
+  let completed_task = STORAGE.with(|service| {
+      let mut service_ref_mut = service.borrow_mut();
+      if let Some(mut task) = service_ref_mut.remove(&id) {
+          // Check if caller is authorized to complete the task
+          if task.owner != caller() {
+              return Err(Error::NotAuthorized {
+                  msg: format!("Caller is not authorized to complete task with id={}", id),
+                  caller: caller(),
+              });
+          }
+          
+          // Check if task is already completed
+          if task.completed {
+              return Err(Error::InvalidAction {
+                  msg: "Task is already completed".to_string(),
+              });
+          }
+          
+          // Mark the task as completed
+          task.completed = true;
+          
+          // Check if task is completed late
+          if let Some(deadline) = task.deadline {
+              if time() > deadline {
+                  task.completed_late = true;
+              }
+          }
+          
+          // Update the task's updated_at field
+          task.updated_at = Some(time());
+          
+          // Clone the task before re-inserting it
+          let cloned_task = task.clone();
+          
+          // Re-insert the modified task
+          service_ref_mut.insert(id, task);
+          
+          Ok(cloned_task)
+      } else {
+          Err(Error::NotFound {
+              msg: format!("Task with id={} not found", id),
+          })
+      }
+  });
 
-    // Check if the task exists
-    if let Some(task) = storage.remove(&id) {
-        // Clone the task
-        let mut task = task.clone();
-        
-        // Check if caller is authorized to complete the task
-        if task.owner != caller() {
-            return Err(Error::NotAuthorized {
-                msg: format!("Caller is not authorized to complete task with id={}", id),
-                caller: caller(),
-            });
-        }
-        
-        // Check if task is already completed
-        if task.completed {
-            return Err(Error::InvalidAction {
-                msg: "Task is already completed".to_string(),
-            });
-        }
-        
-        // Mark the task as completed
-        task.completed = true;
-        
-        // Check if task is completed late
-        if let Some(deadline) = task.deadline {
-            if time() > deadline {
-                task.completed_late = true;
-            }
-        }
-        
-        // Update the task's updated_at field
-        task.updated_at = Some(time());
-
-        // Re-insert the modified task
-        storage.insert(id, task.clone());
-
-        Ok(task)
-    } else {
-        Err(Error::NotFound {
-            msg: format!("Task with id={} not found", id),
-        })
-    }
+  completed_task
 }
 
 
