@@ -5,11 +5,11 @@ This is a decentralized task management built on the Internet Computer Protocol 
 
 ## Installation
 
-# Starts the replica, running in the background
-dfx start --background
+### Starts the replica, running in the background
+```bash dfx start --background ```
 
-# Deploys your canisters to the replica and generates your candid interface
-dfx deploy
+### Deploys your canisters to the replica and generates your candid interface
+```bash dfx deploy ```
 
 ## Usage
 
@@ -25,7 +25,7 @@ dfx canister call icp_rust_boilerplate_backend add_task '(
     deadline = null; # Optional deadline in UNIX timestamp format
   }
 )'
-
+```
 
 ### Getting a Task
 
